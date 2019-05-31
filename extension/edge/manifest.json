@@ -11,6 +11,6 @@
     [{ "matches": ["file:///*/*", "http://*/*", "https://*/*"]
      , "all_frames": true
      , "run_at": "document_start"
-     , "js": ["content.js"]
+     , "js": ["policy.js","load_policy.js","jskernel.js"]
      }]
 }
