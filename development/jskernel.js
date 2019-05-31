@@ -1,8 +1,5 @@
-script = document.createElement('script');
-
-
-script.textContent = `
-var modified_worker = (function () {
+jskernel_text = `
+(function () {
 
 	class jskernel_element {
 
@@ -69,8 +66,14 @@ var modified_worker = (function () {
 	// Our global counter variable
 	let _jskernel_counter_ = 0;
 
-	let shared_counter_buffer = new SharedArrayBuffer(16);
-	let shared_counter = new Float32Array(shared_counter_buffer);
+        try{
+	    shared_counter_buffer = new SharedArrayBuffer(16);
+	    shared_counter = new Float32Array(shared_counter_buffer);
+        }catch(err){
+            console.log("SharedArrayBuffer no defined");
+            shared_counter_buffer = {};
+            shared_counter = {};
+        }
 
 	// Create our queue
 	var __event_queue__ = new jskernel_pq();
@@ -151,7 +154,7 @@ var modified_worker = (function () {
 		__add_recover_clock_event__();
 
 		while (__event_queue__.size() > 0) {
-			if (__event_queue__.top().flag == 1 && __event_queue__.top().finish == false) break;
+			if (__event_queue__.top().flag == 1 && __event_queue__.top().finish == false && flag != 1) break;
 
 			let e = __event_queue__.pop();
 
@@ -424,7 +427,7 @@ var modified_worker = (function () {
 			video.jskernel_play_hook = true;
 		}
 		if(typeof video.jskernel_ac_hook == 'undefined'){
-			if(video.textTracks.length == 0)return [];
+			if(video.textTracks.length == 0)return;
 			for(i=0; i < video.textTracks.length; i++){
 				track = video.textTracks[i];
 				old_object_defineProperty(track, "activeCues", {
@@ -438,7 +441,7 @@ var modified_worker = (function () {
 						for(k = 0; k < track.cues.length; k++){
 							if(track.cues[k].startTime <= play_time && track.cues[k].endTime >= play_time)return [track.cues[k]];
 						}
-						return [];
+						return null;
 					}
 				});
 			}
@@ -451,8 +454,7 @@ var modified_worker = (function () {
 	document.getElementById = function() {
 		let params = Array.prototype.slice.call(arguments);
 		res = old_document_getElementById.apply(document, params);
-		if(res != null && res.tagName == "VIDEO"){
-            console.log(res);
+		if(res.tagName == "VIDEO"){
 			hook_video(res);
 		}
 		return res;
@@ -530,20 +532,22 @@ var modified_worker = (function () {
 		//console.log(params);
 		//if(obj == window && "set" in val && (prop == 'onmessage' || prop == 'onerror'))delete val["set"];
 		if(obj == window && "set" in val && (prop == 'onmessage' || prop == 'onerror'))return window;
+		//console.log(obj, prop, val);
  		res = old_object_defineProperty(obj, prop, val);
 		//console.log(res);
 		return res;
 		//old_object_defineProperty.apply(Object, params);
 	}
 
-	
-	let old_atomics_add = Atomics.add;
-	Atomics.add = function(){
+        try{	
+	    let old_atomics_add = Atomics.add;
+	    Atomics.add = function(){
 		let params = Array.prototype.slice.call(arguments);
 		let eet = shared_counter[1] + 1;
 		shared_counter[1] = eet;
 		let jskernel_event = __event_insert__(eet, old_atomics_add, null, params);
-	}
+	    }
+        }catch(err){}
 
 	let old_Uint32Array = Uint32Array;
 	/*Uint32Array = function(buffer){
@@ -811,9 +815,11 @@ var modified_worker = (function () {
 			}
 
 			var __jskernel_old_this_onmessage__ = null;
+                        //var jskernel_onmessage_policy = function(){}
 			self.onmessage = function () {
 				__jskernel_dispatch__(0);
 				let params = Array.prototype.slice.call(arguments);
+                                if(typeof jskernel_onmessage_policy === "function")jskernel_onmessage_policy(params[0]);
 				if (typeof params[0].data ==='object' && "jskernel_topic" in params[0].data) {
 					if (params[0].data.jskernel_topic == "_jskernel_postmessage_event_") {
 						let e = params[0].data.jskernel_buf;
@@ -863,6 +869,7 @@ var modified_worker = (function () {
 			});
 
 	
+                        try{
 			let old_atomics_add = Atomics.add;
 			Atomics.add = function(){
 				let params = Array.prototype.slice.call(arguments);
@@ -871,6 +878,7 @@ var modified_worker = (function () {
 				//console.log("fafaew", shared_counter);
 				let jskernel_event = __event_insert__(eet, old_atomics_add, null, params);
 			}
+                        }catch(err){}
 
 			let old_Uint32Array = Uint32Array;
 			Uint32Array = function(buffer){
@@ -898,8 +906,8 @@ var modified_worker = (function () {
 		//console.log(kernelWorkerInterface.dir);
 		//console.log(kernelWorkerInterface.domain);
 		try {
-			//console.log('kernelWorkerInterface.src');
-			//console.log(kernelWorkerInterface.src);
+			console.log('kernelWorkerInterface.src');
+			console.log(kernelWorkerInterface.src);
 			importScripts(kernelWorkerInterface.src);
 		} catch (err) {
 			try{
@@ -914,6 +922,7 @@ var modified_worker = (function () {
 					importScripts(kernelWorkerInterface.dir + '/' + kernelWorkerInterface.src);
 				}
 			} catch (err) { 
+                                console.log(err);
 				console.log("can't load worker"); 
 				console.log(kernelWorkerInterface.dir); 
 				console.log(kernelWorkerInterface.src); 
@@ -932,9 +941,10 @@ var modified_worker = (function () {
 
 			let worker_inject_script_txt = worker_inject_script.toString();
 			let file_name = userWorker.name;
+                        let policy_inject_script = userWorker.options.policy_inject_script;
 			worker_inject_script_txt = worker_inject_script_txt.replace("user worker file here", file_name).replace("user dir here", dir).replace("user domain here", domain);
 
-			let blob = new Blob(["(" + worker_inject_script_txt + ")()"], {
+			let blob = new Blob(["(" + policy_inject_script + ")();" + "(" + worker_inject_script_txt + ")();"], {
 				type: 'application/javascript'
 			});
 			//console.log(userWorker.name);
@@ -1084,12 +1094,14 @@ var modified_worker = (function () {
 		}
 	}
 	var jskernel_workers = [];
+        jskernel_worker_onmessage_policy = function(){};
 	var worker_creator = {
+                policy_inject_script: "function(){}",
 		construct: (obj, prop) => {
 			url = prop[0];
 			var myworker = {
 				name: url,
-				options: {'name':url}
+				options: {'name':url, 'policy_inject_script':worker_creator.policy_inject_script}
 			};
 			let realworker = kernelInterface.constructWorker(myworker);
 			//let res = new Proxy(realworker, worker_handler);
@@ -1116,6 +1128,7 @@ var modified_worker = (function () {
 				let jskernel_onmessage_event = new Proxy(params[0], onmessage_event_handler);
 				//jskernel_event.params = [jskernel_onmessage_event];
 				//console.log(params[0]);
+                                jskernel_worker_onmessage_policy(params[0]);
 				if (typeof params[0].data === "object" && "jskernel_topic" in params[0].data) {
 					if (params[0].data.jskernel_topic == "_jskernel_postmessage_event_") {
 						let e = params[0].data.jskernel_buf;
@@ -1172,8 +1185,16 @@ var modified_worker = (function () {
 
 	Worker = new Proxy(Function, worker_creator);
 
-	//return {"__event_queue__":__event_queue__};
+        __jskernel_old_onbeforeunload__ = onbeforeunload;
+        onbeforeunload = function(){
+            __jskernel_dispatch__(1);
+            if(typeof __jskernel_old_onbeforeunload__ == "function")__jskernel_old_onbeforeunload__();
+        }
+        Object.defineProperty(window, "onbeforeunload", {
+            set: function(){__jskernel_old_onbeforeunload__ = arguments[0]}
+        });
 
+//policy injection
 })();
 
 function unit_test_worker() {
@@ -1250,7 +1271,7 @@ function unit_test_multiple_setTimeout(){
 	}
 	start = test_count;
 	var oImg = document.createElement("img");
-	oImg.setAttribute('src', 'https://jskernel2019.github.io/js/imgDecoding/9e5.png');
+	oImg.setAttribute('src', 'https://jskernelext.github.io/js/imgDecoding/9e5.png');
 	oImg.onerror = function(){
   	end = test_count; 
     console.log(test_count);
@@ -1260,6 +1281,15 @@ function unit_test_multiple_setTimeout(){
 }
 
 //unit_test_multiple_setTimeout();
+
 `;
+
+apply_poloicy_script = load_policy();
+
+jskernel_text = jskernel_text.replace("//policy injection", apply_poloicy_script);
+
+script = document.createElement('script');
+
+script.textContent = jskernel_text;
 
 document.documentElement.appendChild(script);
